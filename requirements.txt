@@ -1,0 +1,12 @@
+pandas~=2.2.3
+numpy~=1.26.4
+pyqt5~=5.15.11
+scikit-learn~=1.6.1
+scipy~=1.15.1
+qtpy~=2.4.1
+matplotlib~=3.10.0
+statsmodels~=0.14.4
+tensorflow~=2.19.0
+h5py~=3.13.0
+keras~=3.9.2
+setuptools~=75.1.0

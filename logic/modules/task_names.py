@@ -1,0 +1,10 @@
+
+CLASSIFICATION = "Classification"
+REGRESSION = "Regression"
+CLUSTERING = "Clustering"
+DIMENSIONALITY_REDUCTION = "Dimensionality Reduction"
+ANOMALY_DETECTION = "Anomaly Detection"
+DENSITY_ESTIMATION = "Density Estimation"
+MLP = "Scikit-learn MLP models"
+TIME_SERIES = "Time Series"
+OWN_NN = "Import own"
