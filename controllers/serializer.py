@@ -196,6 +196,7 @@ class WorkspaceSerializer(QObject):
                 y=node_data["position"][1]
             )
             node.set_name(node_data["name"])
+            node.label.setPlainText(node_data["name"])
 
             # Save ID mapping
             node_map[node_data["id"]] = node

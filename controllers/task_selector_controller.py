@@ -55,6 +55,7 @@ class TaskSelectorController(QObject):
             "Навчання без вчителя": 2
         }
         learning_type_dialog = DynamicButtonDialog("Вибір підходу до навчання", learning_type_dict, self.sender)
+
         result = learning_type_dialog.exec_()
 
         if result == 1:  # Supervised Learning
@@ -87,6 +88,7 @@ class TaskSelectorController(QObject):
 
     def show_task_selection_dialog(self, title, tasks):
         dialog = QDialog(self.sender)
+        dialog.setWindowFlags(Qt.Dialog | Qt.CustomizeWindowHint | Qt.WindowTitleHint)
         dialog.setWindowTitle(title)
         dialog.setGeometry(200, 200, 400, 500)
 
@@ -200,6 +202,7 @@ class TaskSelectorController(QObject):
             """
 
         dialog = QDialog(self.sender)
+        dialog.setWindowFlags(Qt.Dialog | Qt.CustomizeWindowHint | Qt.WindowTitleHint)
         dialog.setWindowTitle("Select Model")
         dialog.setGeometry(200, 200, 500, 600)
 

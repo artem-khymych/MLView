@@ -49,7 +49,7 @@ Neural Networks:
 import sklearn.neural_network as neural_network
 
 
-# TODO add statsmodels and more checks on models before sending dict
+
 class ModelsManager(QObject):
     classification_modules = [
         linear_model, svm, tree, ensemble, neighbors,

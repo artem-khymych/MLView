@@ -1,6 +1,8 @@
 from typing import Dict, List, Tuple, Any, Optional
 from PyQt5.QtCore import QObject, pyqtSlot, Qt
 from PyQt5.QtWidgets import QGraphicsView, QWidget, QMessageBox, QFileDialog
+
+from project.controllers.inspector_controller import InspectorController
 from project.controllers.node_controller import NodeController
 from project.controllers.serializer import WorkspaceSerializer
 from project.logic.experiment_manager import ExperimentManager
@@ -30,6 +32,9 @@ class WorkspaceManager(QObject):
 
         # Connect serializer signals
         self._connect_serializer_signals()
+
+    def set_inspector_controller(self, inspector_controller: InspectorController):
+        self.inspector_controller = inspector_controller
 
     def set_experiment_manager(self, manager: ExperimentManager):
         """Sets experiment manager for WorkspaceManager."""
@@ -82,7 +87,8 @@ class WorkspaceManager(QObject):
         self.current_project_path = path
         self.has_unsaved_changes = False
         print(f"Workspace successfully loaded: {path}")
-
+        for node in self.node_controller.nodes:
+            self.inspector_controller.update_node_in_inspector(node)
         # Fit view to content after loading
         self.fit_view_to_content()
 
@@ -246,7 +252,12 @@ class WorkspaceManager(QObject):
         if self.experiment_manager:
             self.experiment_manager.experiments = {}
 
+        if self.inspector_controller:
+            for node in list(self.node_controller.nodes):
+                self.inspector_controller.remove_node_from_inspector(node.id)
+
         # Clear nodes on scene
         if self.node_controller:
             for node in list(self.node_controller.nodes):
                 self.node_controller.delete_node(node)
+

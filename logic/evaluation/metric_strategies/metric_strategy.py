@@ -51,10 +51,13 @@ class TimeSeriesMetric(MetricStrategy):
             Словник з обчисленими метриками.
         """
         metrics = {}
-
+        y_true = [item for item in y_true]
+        y_pred = [item[0] for item in y_pred]
         # Перевірка вхідних даних
         y_true = np.array(y_true)
         y_pred = np.array(y_pred)
+
+#        y_pred = [item[0] for item in y_pred]
 
         if len(y_true) != len(y_pred):
             raise ValueError("y_true і y_pred повинні мати однакову довжину")

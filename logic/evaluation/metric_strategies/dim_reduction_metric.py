@@ -13,36 +13,36 @@ class DimReduction(MetricStrategy):
     def evaluate(self, X_original, X_reduced, X_reconstructed=None, n_neighbors=5,
                  precomputed_distances=None, precomputed_reduced_distances=None):
         """
-        Обчислює різні метрики для оцінки якості зменшення розмірності.
+        Computes various metrics to evaluate the quality of dimensionality reduction.
 
-        Параметри:
+        Parameters:
         -----------
         X_original : array-like
-            Оригінальні дані високої розмірності.
+            Original high-dimensional data.
         X_reduced : array-like
-            Дані зниженої розмірності.
+            Reduced-dimensional data.
         X_reconstructed : array-like, optional
-            Реконструйовані дані (з зниженої розмірності назад у вихідну).
-            Потрібно для обчислення помилки реконструкції.
+            Reconstructed data (from reduced back to original space).
+            Required for reconstruction error metrics.
         n_neighbors : int, optional (default=5)
-            Кількість сусідів для обчислення метрик збереження сусідства.
+            Number of neighbors for neighborhood preservation metrics.
         precomputed_distances : array-like, optional
-            Попередньо обчислена матриця відстаней для оригінальних даних.
+            Precomputed distance matrix for the original data.
         precomputed_reduced_distances : array-like, optional
-            Попередньо обчислена матриця відстаней для даних зниженої розмірності.
+            Precomputed distance matrix for the reduced data.
 
-        Повертає:
+        Returns:
         -----------
         dict
-            Словник з обчисленими метриками.
+            Dictionary of computed metrics.
         """
         metrics = {}
 
-        # Перевірка вхідних даних
+        # Input validation
         X_original = np.array(X_original)
         X_reduced = np.array(X_reduced)
 
-        # Обчислення матриць відстаней, якщо вони не передані
+        # Compute distance matrices if not provided
         if precomputed_distances is None:
             dist_original = squareform(pdist(X_original))
         else:
@@ -53,68 +53,68 @@ class DimReduction(MetricStrategy):
         else:
             dist_reduced = precomputed_reduced_distances
 
-        # 1. Кореляція Пірсона між відстанями
-        # Перетворимо матриці відстаней у вектори (беремо верхні трикутні частини)
+        # 1. Pearson correlation between distances
+        # Convert distance matrices to vectors (upper triangular parts)
         n = dist_original.shape[0]
         triu_indices = np.triu_indices(n, k=1)
         dist_original_vec = dist_original[triu_indices]
         dist_reduced_vec = dist_reduced[triu_indices]
 
-        # Обчислення кореляції
+        # Compute correlation
         pearson_corr, _ = pearsonr(dist_original_vec, dist_reduced_vec)
         metrics['pearson_correlation'] = pearson_corr
 
-        # 2. Кореляція Спірмена між відстанями (ранговий коефіцієнт)
+        # 2. Spearman correlation between distances (rank-based)
         spearman_corr, _ = spearmanr(dist_original_vec, dist_reduced_vec)
         metrics['spearman_correlation'] = spearman_corr
 
-        # 3. Коефіцієнт надійності (Trustworthiness)
-        # Вимірює, наскільки зберігаються локальні сусідства
+        # 3. Trustworthiness coefficient
+        # Measures how well local neighborhoods are preserved
         try:
             trust = trustworthiness(X_original, X_reduced, n_neighbors=n_neighbors)
             metrics['trustworthiness'] = trust
         except:
             metrics['trustworthiness'] = float('nan')
 
-        # 4. Continuity (доповнення до Trustworthiness)
-        # Continuity вимірює, чи нові сусіди в скороченому просторі
-        # є справжніми сусідами в оригінальному просторі
+        # 4. Continuity (complement to Trustworthiness)
+        # Continuity measures whether new neighbors in the reduced space
+        # are actually true neighbors in the original space
         try:
             continuity = trustworthiness(X_reduced, X_original, n_neighbors=n_neighbors)
             metrics['continuity'] = continuity
         except:
             metrics['continuity'] = float('nan')
 
-        # 5. Відсоток збереження дисперсії (для лінійних методів)
-        # Якщо X_reconstructed не передано, можемо обчислити тільки
-        # якщо розмірність X_reduced < X_original
+        # 5. Variance retention ratio (for linear methods)
+        # If X_reconstructed is not provided, compute only
+        # if X_reduced has lower dimensionality than X_original
         if X_original.shape[1] > X_reduced.shape[1]:
-            # Дисперсія в зниженому просторі / дисперсія в оригінальному просторі
+            # Variance in reduced space / Variance in original space
             var_original = np.sum(np.var(X_original, axis=0))
             var_reduced = np.sum(np.var(X_reduced, axis=0))
             metrics['variance_retention_ratio'] = var_reduced / var_original
 
-        # 6. Метрики реконструкції (якщо надано реконструйовані дані)
+        # 6. Reconstruction metrics (if reconstructed data is provided)
         if X_reconstructed is not None:
             X_reconstructed = np.array(X_reconstructed)
 
-            # Середньоквадратична помилка реконструкції
+            # Mean squared reconstruction error
             mse = mean_squared_error(X_original, X_reconstructed)
             metrics['reconstruction_mse'] = mse
             metrics['reconstruction_rmse'] = np.sqrt(mse)
 
-            # Відносна помилка реконструкції
+            # Relative reconstruction error
             metrics['relative_reconstruction_error'] = np.sum((X_original - X_reconstructed) ** 2) / np.sum(
                 X_original ** 2)
 
-            # Коефіцієнт поясненої дисперсії
+            # Explained variance score
             metrics['explained_variance'] = explained_variance_score(X_original, X_reconstructed)
 
-        # 7. K-найближчий сусід збереження (KNN Preservation)
+        # 7. K-Nearest Neighbor Preservation
         def knn_preservation(dist_orig, dist_red, k):
-            """Обчислює відсоток k-найближчих сусідів, які зберігаються."""
+            """Computes the percentage of k-nearest neighbors that are preserved."""
             n = dist_orig.shape[0]
-            knn_orig = np.argsort(dist_orig, axis=1)[:, 1:k + 1]  # Виключаємо саму точку
+            knn_orig = np.argsort(dist_orig, axis=1)[:, 1:k + 1]  # Exclude the point itself
             knn_red = np.argsort(dist_red, axis=1)[:, 1:k + 1]
 
             preservation = 0
@@ -124,27 +124,27 @@ class DimReduction(MetricStrategy):
 
             return preservation / n
 
-        # Обчислюємо збереження KNN для різних значень k
+        # Compute KNN preservation for different k values
         for k in [5, 10, 20]:
-            if n > k:  # Перевіряємо, що у нас достатньо даних
+            if n > k:  # Ensure there are enough data points
                 knn_pres = knn_preservation(dist_original, dist_reduced, k)
                 metrics[f'knn_preservation_{k}'] = knn_pres
 
-        # 8. Відношення стресу (Stress Ratio)
-        # Нормалізована сума квадратів різниць між відстанями
+        # 8. Stress Ratio
+        # Normalized sum of squared differences between distances
         sum_sq_dist_original = np.sum(dist_original ** 2)
         if sum_sq_dist_original > 0:
             stress = np.sqrt(np.sum((dist_original - dist_reduced) ** 2) / sum_sq_dist_original)
             metrics['stress_ratio'] = stress
 
-        # 9. Локальна структура (обчислення для невеликих даних, оскільки це обчислювально інтенсивно)
+        # 9. Local structure (computed for small datasets due to computational cost)
         if n <= 1000:
-            # Локальне масштабування відстаней Самона (LSDS - Local Scaling of Distances Score)
-            # Високі значення означають краще збереження локальної структури
+            # Sammon's Local Scaling of Distances Score (LSDS)
+            # High values indicate better preservation of local structure
             def local_scaling(dist_mat, k=5):
                 sigma = np.zeros(n)
                 for i in range(n):
-                    # k+1-й найближчий сусід (включаючи саму точку)
+                    # (k+1)-th nearest neighbor (including self)
                     kth_distance = np.sort(dist_mat[i])[min(k + 1, n - 1)]
                     sigma[i] = kth_distance
 
@@ -159,7 +159,7 @@ class DimReduction(MetricStrategy):
                 scaled_original = local_scaling(dist_original, k=n_neighbors)
                 scaled_reduced = local_scaling(dist_reduced, k=n_neighbors)
 
-                # Кореляція між масштабованими відстанями
+                # Correlation between scaled distances
                 scaled_original_vec = scaled_original[triu_indices]
                 scaled_reduced_vec = scaled_reduced[triu_indices]
 

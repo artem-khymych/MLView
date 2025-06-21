@@ -40,8 +40,8 @@ class DensityEstimationMetric(MetricStrategy):
         probs = model.predict_proba(X)
 
         # Get BIC and AIC scores which are model selection criteria
-        metrics['bic'] = model.bic(X)
-        metrics['aic'] = model.aic(X)
+        #metrics['bic'] = model.bic(X)
+        #metrics['aic'] = model.aic(X)
 
         # Calculate cluster quality metrics
         try:

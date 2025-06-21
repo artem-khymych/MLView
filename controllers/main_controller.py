@@ -4,6 +4,7 @@ from project.controllers.experiment_settings_dialog.experiment_settings_controll
 from project.controllers.inspector_controller import InspectorController
 from project.controllers.task_selector_controller import TaskSelectorController
 from project.controllers.workspace_manager import WorkspaceManager
+from project.logic.experiment.experiment import Experiment
 from project.logic.experiment_manager import ExperimentManager
 from project.logic.modules.models_manager import ModelsManager
 from project.ui.experiment_settings_dialog.experiment_comparison_dialog import ExperimentComparisonDialog
@@ -26,6 +27,7 @@ class MainController:
         self.workspace_manager.set_experiment_manager(self.experiment_manager)
         self.workspace_manager.set_node_controller(self.inspector_controller.node_controller)
         self.workspace_manager.set_work_area(self.view.graphics_view)  # Passing the work area
+        self.workspace_manager.set_inspector_controller(self.inspector_controller)
 
         self.connect_signals()
 
@@ -48,7 +50,7 @@ class MainController:
         self.view.save_action.triggered.connect(lambda: self.workspace_manager.save_project(self.view))
         self.view.open_action.triggered.connect(lambda: self.workspace_manager.open_project(self.view))
         self.view.new_action.triggered.connect(self.workspace_manager.new_project)
-
+        #Experiment.renamed.connect(self.rename)
         self.inspector_controller.node_controller.update_experiment_name.connect(self.experiment_manager.update_name)
 
 
@@ -72,6 +74,13 @@ class MainController:
 
         self.experiment_settings_controller.metrics_controller.compare_all.connect(self.experiment_manager.get_experiments_by_task)
         self.experiment_manager.get_all_task_experiments.connect(ExperimentComparisonDialog.create_dialog_with_filtered_experiments)
+        def rename(new_name:str):
+            self.inspector_controller.node_controller.find_node_by_id(experiment.id).name = new_name
+            self.inspector_controller.node_controller.find_node_by_id(experiment.id).set_name(new_name)
+            self.inspector_controller.node_controller.node_renamed.emit(
+                self.inspector_controller.node_controller.find_node_by_id(experiment.id))
+
+        self.experiment_settings_controller.general_controller.view.experiment_name.textChanged.connect(rename)
 
     def _handle_experiment_inheritance(self, parent_id):
         """Handler for experiment inheritance signal"""

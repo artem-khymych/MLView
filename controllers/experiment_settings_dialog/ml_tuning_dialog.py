@@ -51,7 +51,7 @@ class ParamTuningDialog(QDialog):
     def initUI(self):
         self.setWindowTitle('Налаштування параметрів моделі')  # "Model Parameters Tuning"
         self.setMinimumWidth(650)
-        self.setMinimumHeight(550)
+        self.setMinimumHeight(1000)
 
         main_layout = QVBoxLayout()
 

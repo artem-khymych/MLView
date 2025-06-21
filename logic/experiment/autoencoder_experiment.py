@@ -170,10 +170,6 @@ class AutoencoderExperiment(NeuralNetworkExperiment):
             self.reconstructed_test = self.model.predict(self.X_test)
 
             # Add dimensionality information
-            self.data_info['original_dim'] = np.prod(self.X_train.shape[1:])
-            self.data_info['latent_dim'] = np.prod(self.latent_train.shape[1:])
-            self.data_info['compression_ratio'] = self.data_info['original_dim'] / self.data_info['latent_dim']
-
             print(f"Data successfully processed for dimensionality reduction task.")
             print(
                 f"Compression: {self.data_info['original_dim']} -> {self.data_info['latent_dim']} (ratio: {self.data_info['compression_ratio']:.2f}x)")
@@ -223,16 +219,6 @@ class AutoencoderExperiment(NeuralNetworkExperiment):
             # Add information about detected anomalies
             anomalies_train = np.sum(self.train_predictions)
             anomalies_test = np.sum(self.test_predictions)
-            self.data_info['anomalies_train'] = anomalies_train
-            self.data_info['anomalies_test'] = anomalies_test
-            self.data_info['anomalies_train_percent'] = (anomalies_train / len(self.train_predictions)) * 100
-            self.data_info['anomalies_test_percent'] = (anomalies_test / len(self.test_predictions)) * 100
-
-            print(f"Detected anomalies:")
-            print(
-                f"  Training data: {anomalies_train} out of {len(self.train_predictions)} ({self.data_info['anomalies_train_percent']:.2f}%)")
-            print(
-                f"  Test data: {anomalies_test} out of {len(self.test_predictions)} ({self.data_info['anomalies_test_percent']:.2f}%)")
 
         except Exception as e:
             print(f"Error processing data for anomaly detection: {str(e)}")
@@ -333,13 +319,6 @@ class AutoencoderExperiment(NeuralNetworkExperiment):
         # Check dimension compatibility
         if self.X_train.ndim != self.X_test.ndim:
             raise ValueError(f"Dimension mismatch between X_train ({self.X_train.ndim}) and X_test ({self.X_test.ndim})")
-
-        # Save data information
-        self.data_info['x_shape'] = self.X_train.shape
-        self.data_info['x_min'] = np.min(self.X_train)
-        self.data_info['x_max'] = np.max(self.X_train)
-        self.data_info['x_mean'] = np.mean(self.X_train)
-        self.data_info['x_std'] = np.std(self.X_train)
 
         # For anomaly detection task, check labels (if available)
         if self.task == TaskType.ANOMALY_DETECTION and hasattr(self, 'y_train') and self.y_train is not None:

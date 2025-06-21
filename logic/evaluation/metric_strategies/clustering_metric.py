@@ -84,53 +84,6 @@ class ClusteringMetric(MetricStrategy):
             metrics['avg_between_cluster_distance'] = float('nan')
 
         # Outer metrics - need y_true labels
-        if true_labels is not None:
-            true_labels = np.array(true_labels)
-
-            try:
-                # Adjusted Rand Index
-                metrics['adjusted_rand_score'] = adjusted_rand_score(true_labels, labels)
-            except:
-                metrics['adjusted_rand_score'] = float('nan')
-
-            try:
-                # Normalized Mutual Information
-                metrics['normalized_mutual_info_score'] = normalized_mutual_info_score(true_labels, labels)
-            except:
-                metrics['normalized_mutual_info_score'] = float('nan')
-
-            try:
-                # Adjusted Mutual Information
-                metrics['adjusted_mutual_info_score'] = adjusted_mutual_info_score(true_labels, labels)
-            except:
-                metrics['adjusted_mutual_info_score'] = float('nan')
-
-            try:
-                # Homogeneity, Completeness and V-measure
-                metrics['homogeneity_score'] = homogeneity_score(true_labels, labels)
-                metrics['completeness_score'] = completeness_score(true_labels, labels)
-                metrics['v_measure_score'] = v_measure_score(true_labels, labels)
-            except:
-                metrics['homogeneity_score'] = float('nan')
-                metrics['completeness_score'] = float('nan')
-                metrics['v_measure_score'] = float('nan')
-
-            try:
-                # Fowlkes-Mallows score
-                metrics['fowlkes_mallows_score'] = fowlkes_mallows_score(true_labels, labels)
-            except:
-                metrics['fowlkes_mallows_score'] = float('nan')
-
-            try:
-                cm = contingency_matrix(true_labels, labels)
-                metrics['contingency_matrix'] = cm
-
-                purity = 0
-                for j in range(cm.shape[1]):
-                    purity += np.max(cm[:, j])
-                metrics['purity'] = purity / np.sum(cm)
-            except:
-                metrics['purity'] = float('nan')
 
         return metrics
 
@@ -155,15 +108,6 @@ class ClusteringMetric(MetricStrategy):
             'avg_within_cluster_distance': False,  # Lower is better (more compact clusters)
             'avg_between_cluster_distance': True,  # Higher is better (more separated clusters)
 
-            # External metrics (requiring true labels)
-            'adjusted_rand_score': True,  # Higher is better (range: -0.5 to 1)
-            'normalized_mutual_info_score': True,  # Higher is better (range: 0 to 1)
-            'adjusted_mutual_info_score': True,  # Higher is better (range: 0 to 1)
-            'homogeneity_score': True,  # Higher is better (range: 0 to 1)
-            'completeness_score': True,  # Higher is better (range: 0 to 1)
-            'v_measure_score': True,  # Higher is better (range: 0 to 1)
-            'fowlkes_mallows_score': True,  # Higher is better (range: 0 to 1)
-            'purity': True  # Higher is better (range: 0 to 1)
         }
 
         return metainformation

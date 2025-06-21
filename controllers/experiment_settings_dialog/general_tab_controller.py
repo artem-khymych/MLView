@@ -56,13 +56,14 @@ class GeneralSettingsController(QObject):
         self.experiment.description = self.view.description.toPlainText()
 
     def set_experiment_name(self, name: str):
-        self.view.experiment_name.setText(name)
+        self.experiment.name = name
 
     def connect_signals(self):
         """Connect signal handlers"""
         self.view.evaluate_clicked.connect(self.experiment.evaluate)
         self.experiment.experiment_finished.connect(self.on_experiment_finished)
         self.view.description.textChanged.connect(self.set_experiment_description)
+        self.view.experiment_name.textChanged.connect(self.set_experiment_name)
         # Connect inheritance button to appropriate method
         self.view.inherit_button.clicked.connect(self.on_experiment_inherited)
 
@@ -70,10 +71,11 @@ class GeneralSettingsController(QObject):
         """Experiment completion handler"""
         print(f"Experiment completed in {training_time} seconds")
         self.experiment.is_finished = True
-        self.view.time_label.setText(f"На тренування витрачено {str(training_time)} секунд")  # "Training took {time} seconds"
+        self.view.time_value.setText(f"{str(training_time)}")  # "Training took {time} seconds"
         QMessageBox.information(self.view, "Успіх",  # "Success"
                                 "Модель успішно натренована.")  # "Model trained successfully"
         self.view.set_experiment_finished(training_time)
+        self.view.start_button.setText("Перезапустити")
         if isinstance(self.experiment, GenericNeuralNetworkExperiment):
             self.history_button.setVisible(True)
         self.view.save_button.setEnabled(True)
@@ -84,4 +86,3 @@ class GeneralSettingsController(QObject):
         self.experiment_inherited.emit(self.experiment.id)
         QMessageBox.information(self.view, "Успадкування",  # "Inheritance"
             f"Створено новий експеримент на основі '{self.experiment.name}'")
-        # f"Created new experiment based on '{self.experiment.name}'"

@@ -23,6 +23,7 @@ from sklearn.model_selection import train_test_split
 class Experiment(QObject):
     experiment_finished = pyqtSignal(float)
     experiment_evaluated = pyqtSignal(object, object)
+    renamed = pyqtSignal(str)
 
     def __init__(self, id, task, model, params, parent=None):
         super().__init__()

@@ -181,7 +181,7 @@ def get_nn_metric(model_type_str: str, task_type_str: str):
         "DIMENSIONALITY_REDUCTION": TaskType.DIMENSIONALITY_REDUCTION,
         "ANOMALY_DETECTION": TaskType.ANOMALY_DETECTION,
         #"DENSITY_ESTIMATION": TaskType.DENSITY_ESTIMATION,
-        "TIME_SERIES_FORECASTING": TaskType.TIME_SERIES_FORECASTING
+        "TIME SERIES FORECASTING": TaskType.TIME_SERIES_FORECASTING
     }
 
     try:

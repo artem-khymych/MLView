@@ -1,0 +1,1271 @@
+файл basic_contoller.py
+from PyQt5.QtWidgets import QApplication
+
+
+
+class BasicController:
+    def __init__(self, view):
+        self.isMaximized = True
+        self.view = view
+        self.close_arrow = self.view.style().standardIcon(QApplication.style().SP_ArrowLeft)
+        self.open_arrow = self.view.style().standardIcon(QApplication.style().SP_ArrowRight)
+
+
+
+файл inspector_controller.py
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QListWidgetItem, QWidget, QListWidget
+
+from project.controllers.basic_contoller import BasicController
+from project.controllers.node_controller import NodeController
+
+
+class InspectorController(BasicController):
+    """Node inspector - displays a list of nodes and allows managing them."""
+
+    def __init__(self, view, scene, node_view):
+        super().__init__(view)
+        self.node_controller = NodeController(scene, node_view)
+        self.nodes_list = self.view.findChild(QListWidget, "nodes_list")
+
+        # Connecting to the node controller
+        self.node_controller.node_created.connect(self.add_node_to_inspector)
+        self.node_controller.node_deleted.connect(self.remove_node_from_inspector)
+        self.node_controller.node_renamed.connect(self.update_node_in_inspector)
+        self.nodes_list.itemClicked.connect(self.on_item_clicked)
+
+    def add_node_to_inspector(self, node):
+        """Adds a node to the inspector."""
+        item = QListWidgetItem(node.get_name())
+        item.setData(Qt.UserRole, node.id)  # Storing the node ID
+        self.nodes_list.addItem(item)
+
+    def remove_node_from_inspector(self, node_id):
+        """Removes a node from the inspector by ID."""
+        for i in range(self.nodes_list.count()):
+            item = self.nodes_list.item(i)
+            if item.data(Qt.UserRole) == node_id:
+                self.nodes_list.takeItem(i)
+                break
+
+    def update_node_in_inspector(self, node):
+        """Updates the node display in the inspector."""
+        for i in range(self.nodes_list.count()):
+            item = self.nodes_list.item(i)
+            if item.data(Qt.UserRole) == node.id:
+                item.setText(node.get_name())
+                self.node_controller.update_experiment_name.emit(node.id, node.get_name())
+                break
+
+    def on_item_clicked(self, item):
+        """Click handler for list items."""
+        node_id = item.data(Qt.UserRole)
+        self.node_controller.center_on_node(node_id)
+
+файл main_controller.py
+from PyQt5.QtWidgets import QMainWindow, QDialog
+
+from project.controllers.experiment_settings_dialog.experiment_settings_controller import ExperimentSettingsController
+from project.controllers.inspector_controller import InspectorController
+from project.controllers.task_selector_controller import TaskSelectorController
+from project.controllers.workspace_manager import WorkspaceManager
+from project.logic.experiment_manager import ExperimentManager
+from project.logic.modules.models_manager import ModelsManager
+from project.ui.experiment_settings_dialog.experiment_comparison_dialog import ExperimentComparisonDialog
+from project.ui.experiment_settings_dialog.experiment_settings_dialog import ExperimentSettingsWindow
+
+from project.ui.main_window import MainWindow
+
+
+class MainController:
+    def __init__(self):
+        self.workspace_manager = WorkspaceManager()
+        self.view = MainWindow()
+        self.models_manager = ModelsManager()
+        self.inspector_controller = InspectorController(self.view.inspector_frame,
+                                                        self.view.scene,
+                                                        self.view.graphics_view)
+        self.task_selector_controller = TaskSelectorController(self.view)
+        self.experiment_manager = ExperimentManager()
+
+        self.workspace_manager.set_experiment_manager(self.experiment_manager)
+        self.workspace_manager.set_node_controller(self.inspector_controller.node_controller)
+        self.workspace_manager.set_work_area(self.view.graphics_view)  # Passing the work area
+
+        self.connect_signals()
+
+    def connect_signals(self):
+        self.task_selector_controller.request_models_dict.connect(self.models_manager.create_models_dict)
+        self.models_manager.models_dict_ready.connect(self.task_selector_controller.handle_models_dict_response)
+        self.view.signals.add_new_experiment.connect(self.inspector_controller.node_controller.create_node)
+        self.inspector_controller.node_controller.node_created.connect(self.experiment_manager.get_node)
+        self.view.signals.add_new_experiment.connect(self.task_selector_controller.show_approach_selection)
+        self.task_selector_controller.send_ml_model.connect(self.experiment_manager.get_ml_model)
+        self.inspector_controller.node_controller.nodeInfoOpened.connect(self._show_experiment_settings_dialog)
+
+        # Connecting the experiment inheritance signal from the node controller
+        self.inspector_controller.node_controller.experiment_inherited.connect(self._handle_experiment_inheritance)
+
+        self.task_selector_controller.send_nn_model.connect(self.experiment_manager.create_nn_experiment)
+
+        self.view.fit_action.triggered.connect(self.workspace_manager.fit_view_to_content)
+        self.view.save_as_action.triggered.connect(lambda: self.workspace_manager.save_project_as(self.view))
+        self.view.save_action.triggered.connect(lambda: self.workspace_manager.save_project(self.view))
+        self.view.open_action.triggered.connect(lambda: self.workspace_manager.open_project(self.view))
+        self.view.new_action.triggered.connect(self.workspace_manager.new_project)
+
+        self.inspector_controller.node_controller.update_experiment_name.connect(self.experiment_manager.update_name)
+
+
+    def _show_experiment_settings_dialog(self, node_id):
+        """Function to display the experiment settings dialog"""
+        dialog = ExperimentSettingsWindow(self.view)
+        experiment = self.experiment_manager.get_experiment(node_id)
+        self.experiment_settings_controller = ExperimentSettingsController(experiment, dialog)
+
+        # Connecting the inheritance signal from settings dialog
+        self.experiment_settings_controller.experiment_inherited.connect(self._handle_experiment_inheritance)
+        self.experiment_settings_controller.metrics_controller.compare_experiments.connect(
+            self.experiment_manager.show_comparison_dialog)
+
+        #self.experiment_settings_controller.request_experiment_update.connect(
+        #    self.experiment_manager.update_nn_experiment)  # change nn experiment class in order to task
+
+        self.experiment_settings_controller.show()
+        self.experiment_settings_controller.window.general_tab.save_button.clicked.connect(
+            lambda: self.experiment_manager.save_model(experiment, self.view))
+
+        self.experiment_settings_controller.metrics_controller.compare_all.connect(self.experiment_manager.get_experiments_by_task)
+        self.experiment_manager.get_all_task_experiments.connect(ExperimentComparisonDialog.create_dialog_with_filtered_experiments)
+
+    def _handle_experiment_inheritance(self, parent_id):
+        """Handler for experiment inheritance signal"""
+        # Create new node and inherit experiment data
+        parent_experiment = self.experiment_manager.get_experiment(parent_id)
+
+        # Create new node through node controller
+        new_node = self.inspector_controller.node_controller.create_inherited_node(parent_id)
+
+        # After node creation, inherit the experiment
+        if new_node and parent_experiment:
+            # Experiment manager will create new experiment with inherited data
+            self.experiment_manager.inherit_experiment_from(parent_id, new_node.id)
+
+    def show(self):
+        self.view.show()
+
+
+файл node_controller.py
+from PyQt5.QtCore import Qt, QPoint, QTimer
+from PyQt5.QtWidgets import QGraphicsView, QMenu, QAction, QMessageBox, QGraphicsItem
+
+from project.ui.Edge import Edge
+from project.ui.node import Node
+from PyQt5.QtCore import pyqtSignal, QObject
+
+
+class NodeController:
+    """Node controller - responsible for creating, managing and interacting with nodes."""
+
+    def __init__(self, scene, view):
+        self.scene = scene
+        self.view = view
+        self.nodes = []
+        self.edges = []  # Adding a list to store connections
+        self.active_node = None
+        self.drag_timer = QTimer()
+        self.drag_timer.setSingleShot(True)
+        self.drag_timer.timeout.connect(self._start_dragging)
+        self.current_press_node = None
+
+        # Create a mediator class for signals
+        class SignalEmitter(QObject):
+            node_created = pyqtSignal(object)  # Node creation signal
+            node_deleted = pyqtSignal(int)  # Node deletion signal (passes ID)
+            node_renamed = pyqtSignal(object)  # Node rename signal
+            update_experiment_name = pyqtSignal(int, str)
+            nodeInfoOpened = pyqtSignal(int)  # Signal for opening node info
+            experiment_inherited = pyqtSignal(int)  # Experiment inheritance signal
+
+        self.signals = SignalEmitter()
+        self.node_created = self.signals.node_created
+        self.node_deleted = self.signals.node_deleted
+        self.node_renamed = self.signals.node_renamed
+        self.nodeInfoOpened = self.signals.nodeInfoOpened
+        self.experiment_inherited = self.signals.experiment_inherited
+        self.update_experiment_name = self.signals.update_experiment_name
+
+        self.scene.installEventFilter(view)
+        view.mousePressEvent = self._view_mouse_press
+        view.mouseReleaseEvent = self._view_mouse_release
+        view.mouseMoveEvent = self._view_mouse_move
+        view.contextMenuEvent = self._view_context_menu
+
+    def create_node(self, x=None, y=None):
+        """Creates a new node at specified coordinates or at the center of visible area."""
+        node = Node()
+
+        if x is None or y is None:
+            # Get the visible viewport area
+            viewport_rect = self.view.viewport().rect()
+
+            # Convert viewport center to scene coordinates
+            viewport_center = QPoint(viewport_rect.width() // 2, viewport_rect.height() // 2)
+            scene_center = self.view.mapToScene(viewport_center)
+
+            # Account for node size for precise centering
+            node_width = node.boundingRect().width()
+            node_height = node.boundingRect().height()
+
+            # Set node position at viewport center
+            node.setPos(scene_center.x() - node_width / 2, scene_center.y() - node_height / 2)
+        else:
+            # Set node position at specified coordinates
+            node.setPos(x, y)
+
+        self.scene.addItem(node)
+        self.nodes.append(node)
+
+        self.node_created.emit(node)
+
+        return node
+
+    def create_inherited_node(self, parent_node_id):
+        """Creates a new node that inherits from the node with specified ID."""
+        # Find parent node by ID
+        parent_node = self.find_node_by_id(parent_node_id)
+
+        if not parent_node:
+            print(f"Error: node with ID {parent_node_id} not found")
+            return None
+
+        # Determine position for new node (slightly to the right and below parent)
+        parent_pos = parent_node.pos()
+        new_x = parent_pos.x() + 150  # Right offset
+        new_y = parent_pos.y() + 100  # Down offset
+
+        # Create new node
+        new_node = self.create_node(new_x, new_y)
+
+        # Set name indicating inheritance
+        new_node.set_name(f"Успадковано від {parent_node.get_name()}")
+
+        # Create connection between nodes
+        self.create_edge(parent_node, new_node)
+
+        return new_node
+
+    def create_edge(self, source_node, target_node):
+        """Creates a connection between two nodes."""
+        edge = Edge(source_node, target_node)
+        self.scene.addItem(edge)
+        self.edges.append(edge)
+
+        # Connect edge update when nodes move
+        source_node.itemChange = self._wrap_item_change(source_node, edge)
+        target_node.itemChange = self._wrap_item_change(target_node, edge)
+
+        return edge
+
+    def _wrap_item_change(self, node, edge):
+        """Creates a wrapper for node's itemChange method to update the connection."""
+        original_item_change = node.itemChange if hasattr(node, 'itemChange') else lambda change, value: value
+
+        def wrapped_item_change(change, value):
+            result = original_item_change(change, value)
+            if change == QGraphicsItem.ItemPositionChange or change == QGraphicsItem.ItemPositionHasChanged:
+                edge.update_position()
+            return result
+
+        return wrapped_item_change
+
+    def find_node_by_id(self, node_id):
+        """Finds a node by its ID."""
+        for node in self.nodes:
+            if node.id == node_id:
+                return node
+        return None
+
+    def delete_node(self, node):
+        """Deletes a node and all its connections."""
+        if node in self.nodes:
+            node_id = node.id
+
+            # Remove all connections related to this node
+            edges_to_remove = [edge for edge in self.edges
+                               if edge.source_node == node or edge.target_node == node]
+
+            for edge in edges_to_remove:
+                self.scene.removeItem(edge)
+                self.edges.remove(edge)
+
+            # Remove the node itself
+            self.scene.removeItem(node)
+            self.nodes.remove(node)
+
+            if self.active_node == node:
+                self.active_node = None
+
+            # Emit node deletion signal
+            self.node_deleted.emit(node_id)
+
+    def open_node_info(self, node):
+        """Opens a dialog with node information."""
+        self.nodeInfoOpened.emit(node.id)
+
+    def edit_node_name(self, node):
+        """Activates node name editing."""
+        node.start_editing_name()
+        # Subscribe to editing finished signal
+        node.name_editor.editingFinished.connect(lambda: self.node_renamed.emit(node))
+
+    def center_on_node(self, node_id):
+        """Centers view on the node with specified ID."""
+        for node in self.nodes:
+            if node.id == node_id:
+                # Get node center
+                node_center = node.mapToScene(
+                    node.boundingRect().center().x(),
+                    node.boundingRect().center().y()
+                )
+                # Center view on node
+                self.view.centerOn(node_center)
+                break
+
+    def _view_mouse_press(self, event):
+        """Mouse press event handler for GraphicsView."""
+        # Get item under mouse
+        pos = self.view.mapToScene(event.pos())
+        item = self.scene.itemAt(pos, self.view.transform())
+
+        if event.button() == Qt.LeftButton and isinstance(item, Node):
+            self.current_press_node = item
+            # Start timer to detect click-and-hold
+            self.drag_timer.start(200)
+        else:
+            # Standard processing for non-node items
+            QGraphicsView.mousePressEvent(self.view, event)
+
+    def _view_mouse_release(self, event):
+        """Mouse release event handler for GraphicsView."""
+        if event.button() == Qt.LeftButton and self.current_press_node:
+            if self.drag_timer.isActive():
+                # If timer is still active, it's a click
+                self.drag_timer.stop()
+                self.open_node_info(self.current_press_node)
+            else:
+                # If timer is inactive, it's drag end
+                if self.active_node:
+                    self.active_node.set_active(False)
+                    self.active_node = None
+
+            self.current_press_node = None
+        else:
+            # Standard processing for other cases
+            QGraphicsView.mouseReleaseEvent(self.view, event)
+
+    def _view_mouse_move(self, event):
+        """Mouse move event handler for GraphicsView."""
+        if self.active_node:
+            # If there's an active node, update its position
+            pos = self.view.mapToScene(event.pos())
+            node_width = self.active_node.boundingRect().width()
+            node_height = self.active_node.boundingRect().height()
+            self.active_node.setPos(pos.x() - node_width / 2, pos.y() - node_height / 2)
+        else:
+            # Standard processing for other cases
+            QGraphicsView.mouseMoveEvent(self.view, event)
+
+    def _view_context_menu(self, event):
+        """Context menu event handler."""
+        # Get item under mouse
+        pos = self.view.mapToScene(event.pos())
+        item = self.scene.itemAt(pos, self.view.transform())
+
+        if isinstance(item, Node):
+            # Create context menu
+            context_menu = QMenu(self.view)
+
+            # Add actions
+            rename_action = QAction("Перейменувати", self.view)
+            delete_action = QAction("Видалити", self.view)
+
+            # Connect handlers
+            rename_action.triggered.connect(lambda: self.edit_node_name(item))
+            delete_action.triggered.connect(lambda: self.delete_node(item))
+
+            # Add actions to menu
+            context_menu.addAction(rename_action)
+            context_menu.addAction(delete_action)
+
+            # Show menu
+            context_menu.exec_(event.globalPos())
+        else:
+            # Standard processing for other cases
+            QGraphicsView.contextMenuEvent(self.view, event)
+
+    def _start_dragging(self):
+        """Activates node dragging mode."""
+        if self.current_press_node:
+            self.active_node = self.current_press_node
+            self.active_node.set_active(True)
+
+файл parameter_editor_controller.py
+class ParameterEditorController:
+    """Controller for ParameterEditorWidget"""
+
+    def __init__(self):
+        self.view = None
+
+    def set_view(self, view):
+        self.view = view
+
+    def show(self, params_dict):
+        """Loads parameters into the widget"""
+        if self.view:
+            self.view.populate_table(params_dict)
+
+    def on_parameters_changed(self, updated_params):
+        """Handler for parameter change event"""
+        # Additional logic can be added here before further processing
+        print("Controller: Parameters updated:", updated_params)
+        return updated_params
+
+    def get_current_parameters(self):
+        """Returns current parameters from the widget"""
+        if self.view:
+            return self.view.get_current_parameters()
+        return {}
+
+файл serializer.py
+import os
+import pickle
+from typing import Dict
+from PyQt5.QtCore import QObject, pyqtSignal, QPointF, pyqtSlot
+from project.logic.experiment.experiment import Experiment
+from project.logic.experiment.generic_nn_experiment import GenericNeuralNetworkExperiment
+from project.logic.experiment_manager import ExperimentManager
+
+class WorkspaceSerializer(QObject):
+    """
+    Class for serializing and deserializing the experiment workspace.
+    Stores all information about experiments, nodes and connections between them.
+    """
+
+    # Signals for operation status notifications
+    workspace_saved = pyqtSignal(str)  # Signal emitted when workspace is saved (path)
+    workspace_loaded = pyqtSignal(str)  # Signal emitted when workspace is loaded (path)
+    save_error = pyqtSignal(str)  # Signal emitted when saving fails (error message)
+    load_error = pyqtSignal(str)  # Signal emitted when loading fails (error message)
+
+    def __init__(self, experiment_manager=None, node_controller=None):
+        super().__init__()
+        # References to experiment manager and node controller
+        self.experiment_manager = experiment_manager or ExperimentManager()
+        self.node_controller = node_controller
+
+        # File format version (for future compatibility)
+        self.file_format_version = "1.0"
+
+    def set_node_controller(self, node_controller):
+        """Sets the node controller for the serializer."""
+        self.node_controller = node_controller
+
+    def set_experiment_manager(self, experiment_manager):
+        """Sets the experiment manager for the serializer."""
+        self.experiment_manager = experiment_manager
+
+    def save_workspace(self, filepath: str) -> bool:
+        """
+        Saves the workspace to a file.
+
+        Args:
+            filepath: Path to the save file
+
+        Returns:
+            bool: True on success, False on error
+        """
+        try:
+            # Check if required dependencies are set
+            if not self.experiment_manager or not self.node_controller:
+                self.save_error.emit("Required dependencies not set")
+                return False
+
+            # Get data for serialization
+            serialized_data = self._prepare_serialization_data()
+
+            # Save data to file
+            with open(filepath, 'wb') as file:
+                pickle.dump(serialized_data, file, protocol=pickle.HIGHEST_PROTOCOL)
+
+            # Notify about successful save
+            self.workspace_saved.emit(filepath)
+            return True
+
+        except Exception as e:
+            error_message = f"Error saving workspace: {str(e)}"
+            print(error_message)
+            self.save_error.emit(error_message)
+            return False
+
+    def load_workspace(self, filepath: str) -> bool:
+        """
+        Loads workspace from file.
+
+        Args:
+            filepath: Path to the file to load
+
+        Returns:
+            bool: True on success, False on error
+        """
+        try:
+            # Check if required dependencies are set
+            if not self.experiment_manager or not self.node_controller:
+                self.load_error.emit("Required dependencies not set")
+                return False
+
+            # Check if file exists
+            if not os.path.exists(filepath):
+                self.load_error.emit(f"File {filepath} does not exist")
+                return False
+
+            # Load data from file
+            with open(filepath, 'rb') as file:
+                loaded_data = pickle.load(file)
+
+            # Restore data
+            self._restore_from_serialization_data(loaded_data)
+
+            # Notify about successful load
+            self.workspace_loaded.emit(filepath)
+            return True
+
+        except Exception as e:
+            error_message = f"Error loading workspace: {str(e)}"
+            print(error_message)
+            self.load_error.emit(error_message)
+            return False
+
+    def _prepare_serialization_data(self) -> Dict:
+        """
+        Prepares data for serialization.
+
+        Returns:
+            Dict: Dictionary with serialization data
+        """
+        # Main dictionary for all data
+        serialized_data = {
+            "version": self.file_format_version,
+            "experiments": {},
+            "nodes": [],
+            "edges": [],
+            "node_positions": {},
+            "experiment_node_map": {}
+        }
+
+        # Serialize experiments
+        for exp_id, experiment in self.experiment_manager.experiments.items():
+            # Create structure for storing all required experiment data
+            exp_data = {
+                "id": experiment.id,
+                "name": experiment.name,
+                "description": experiment.description,
+                "task": experiment.task,
+                "is_finished": experiment.is_finished,
+                "train_time": experiment.train_time,
+                "params": experiment._params,
+                "input_data_params": vars(experiment.input_data_params),
+                "parent_id": experiment.parent.id if experiment.parent else None,
+                "type": "neural_network" if isinstance(experiment, GenericNeuralNetworkExperiment) else "standard"
+            }
+
+            # Add metrics data if experiment is finished
+            if experiment.is_finished:
+                exp_data["train_metrics"] = experiment.train_metrics
+                exp_data["test_metrics"] = experiment.test_metrics
+
+            # Save experiment data
+            serialized_data["experiments"][exp_id] = exp_data
+
+        # Serialize node data
+        for node in self.node_controller.nodes:
+            node_data = {
+                "id": node.id,
+                "name": node.get_name(),
+                "position": (node.pos().x(), node.pos().y())
+            }
+            serialized_data["nodes"].append(node_data)
+
+            # Save position separately for easy restoration
+            serialized_data["node_positions"][node.id] = (node.pos().x(), node.pos().y())
+
+            # Link node to experiment
+            serialized_data["experiment_node_map"][node.id] = node.id  # In this case node ID = experiment ID
+
+        # Serialize node connections
+        for edge in self.node_controller.edges:
+            edge_data = {
+                "source_id": edge.source_node.id,
+                "target_id": edge.target_node.id
+            }
+            serialized_data["edges"].append(edge_data)
+
+        return serialized_data
+
+    def _restore_from_serialization_data(self, data: Dict) -> None:
+        """
+        Restores workspace from serialized data.
+
+        Args:
+            data: Dictionary with serialized data
+        """
+        # Check file format version
+        if "version" not in data or data["version"] != self.file_format_version:
+            print(f"Warning: File format version ({data.get('version', 'unknown')}) "
+                  f"differs from current ({self.file_format_version})")
+
+        # Clear current workspace
+        self._clear_current_workspace()
+
+        # Restore nodes
+        node_map = {}  # For storing mapping: old ID -> new node
+        for node_data in data["nodes"]:
+            # Create new node
+            node = self.node_controller.create_node(
+                x=node_data["position"][0],
+                y=node_data["position"][1]
+            )
+            node.set_name(node_data["name"])
+
+            # Save ID mapping
+            node_map[node_data["id"]] = node
+
+            # Explicitly set node position
+            node.setPos(QPointF(node_data["position"][0], node_data["position"][1]))
+
+        # Restore experiments
+        experiment_map = {}  # old ID -> new experiment
+        for exp_id, exp_data in data["experiments"].items():
+            # Determine experiment type
+            if exp_data["type"] == "neural_network":
+                # Create neural network experiment
+                experiment = GenericNeuralNetworkExperiment(
+                    id=node_map[exp_id].id,  # Use new node ID
+                    task=exp_data["task"],
+                    model=None,  # Will be restored later
+                    params=exp_data["params"]
+                )
+            else:
+                # Create standard experiment
+                experiment = Experiment(
+                    id=node_map[exp_id].id,  # Use new node ID
+                    task=exp_data["task"],
+                    model=None,  # Will be restored later
+                    params=exp_data["params"]
+                )
+
+            # Restore basic attributes
+            experiment._name = exp_data["name"]
+            experiment.description = exp_data["description"]
+            experiment.is_finished = exp_data["is_finished"]
+            experiment.train_time = exp_data["train_time"]
+
+            # Restore input data parameters
+            self._restore_input_data_params(experiment, exp_data["input_data_params"])
+
+            # Restore metrics if experiment is finished
+            if experiment.is_finished and "train_metrics" in exp_data:
+                experiment.train_metrics = exp_data["train_metrics"]
+                experiment.test_metrics = exp_data["test_metrics"]
+
+            # Save experiment to manager
+            self.experiment_manager.experiments[experiment.id] = experiment
+
+            # Save ID mapping
+            experiment_map[int(exp_id)] = experiment
+
+        # Restore experiment parent relationships
+        for exp_id, exp_data in data["experiments"].items():
+            if exp_data["parent_id"] is not None:
+                # Find corresponding parent experiment
+                parent_exp = experiment_map.get(exp_data["parent_id"])
+                if parent_exp:
+                    # Set parent experiment
+                    experiment_map[int(exp_id)].parent = parent_exp
+                    # Add reference to child experiment in parent
+                    parent_exp.children.append(experiment_map[int(exp_id)])
+
+        # Restore node connections
+        for edge_data in data["edges"]:
+            # Find corresponding nodes
+            source_node = node_map.get(edge_data["source_id"])
+            target_node = node_map.get(edge_data["target_id"])
+
+            if source_node and target_node:
+                # Create connection
+                self.node_controller.create_edge(source_node, target_node)
+
+        # Update scene to display all elements correctly
+        if self.node_controller.scene:
+            self.node_controller.scene.update()
+
+    def _restore_input_data_params(self, experiment, params_data):
+        """
+        Restores input data parameters for experiment.
+
+        Args:
+            experiment: Experiment to restore parameters for
+            params_data: Dictionary with parameters
+        """
+        # Determine parameter type based on experiment type
+        if isinstance(experiment, GenericNeuralNetworkExperiment):
+            params = experiment.input_data_params
+        else:
+            params = experiment.input_data_params
+
+        # Restore all attributes
+        for key, value in params_data.items():
+            if hasattr(params, key):
+                setattr(params, key, value)
+
+    def _clear_current_workspace(self):
+        """Clears current workspace"""
+        # Clear experiments
+        self.experiment_manager.experiments = {}
+
+        # Clear nodes and connections from scene
+        for node in list(self.node_controller.nodes):
+            self.node_controller.delete_node(node)
+
+        # Additional cleanup if needed
+        self.node_controller.nodes = []
+        self.node_controller.edges = []
+
+файл task_selector_controller.py
+from typing import Dict
+
+from PyQt5.QtCore import Qt, pyqtSignal, QObject
+from PyQt5.QtGui import QFont
+from PyQt5.QtWidgets import QPushButton, QLabel, QVBoxLayout, QDialog, QRadioButton, QButtonGroup, QListWidget
+
+from project.controllers.experiment_settings_dialog.neural_network_loader_tab_controller import \
+    NeuralNetworkLoaderTabController
+from project.logic.modules import task_names
+from project.ui.experiment_settings_dialog.neural_network_load_tab import NeuralNetworkLoaderTabWidget
+from project.ui.task_selector.dynamic_button_dialog import DynamicButtonDialog
+from project.ui.parameter_editor_widget import ParameterEditorWidget
+from project.controllers.parameter_editor_controller import ParameterEditorController
+
+from project.logic.evaluation.task_register import TaskType, NNModelType
+
+
+class TaskSelectorController(QObject):
+    request_models_dict = pyqtSignal(str)
+
+    own_nn_selected = pyqtSignal(str)
+    send_ml_model = pyqtSignal(str, object, object)
+    send_nn_model = pyqtSignal(object, str, str, str)
+
+    _instance = None  # Змінна класу для зберігання екземпляра
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __init__(self, sender):
+        super().__init__()
+        self.sender = sender
+        self.selected_task: str = ""
+        self.nn_loader_dialog = None
+        self.nn_loader_controller = None
+
+    def show_approach_selection(self):
+        approach_dict = {
+            "Класичне МН": 1,
+            "Нейронна мережа": 2
+        }
+        approach_dialog = DynamicButtonDialog("Вибір типу експерименту", approach_dict, self.sender)
+        result = approach_dialog.exec_()
+
+        if result == 1:  # Classical ML
+            self.show_learning_type_selection()
+        elif result == 2:  # Neural Networks
+            self.show_neural_network_selection()
+
+    def show_learning_type_selection(self):
+        learning_type_dict = {
+            "Навчання із вчителем": 1,
+            "Навчання без вчителя": 2
+        }
+        learning_type_dialog = DynamicButtonDialog("Вибір підходу до навчання", learning_type_dict, self.sender)
+        result = learning_type_dialog.exec_()
+
+        if result == 1:  # Supervised Learning
+            self.show_supervised_task_selection()
+        elif result == 2:  # Unsupervised Learning
+            self.show_unsupervised_task_selection()
+
+    def show_supervised_task_selection(self):
+        tasks = {
+            task_names.CLASSIFICATION: 1,
+            task_names.REGRESSION: 2
+        }
+        self.show_task_selection_dialog("Вибір задачі із вчителем", tasks)
+
+    def show_unsupervised_task_selection(self):
+        tasks = {
+            task_names.CLUSTERING: 1,
+            task_names.DIMENSIONALITY_REDUCTION: 2,
+            task_names.ANOMALY_DETECTION: 3,
+            task_names.DENSITY_ESTIMATION: 4
+        }
+        self.show_task_selection_dialog("Вибір задачі без вчителя", tasks)
+
+    def show_neural_network_selection(self):
+        nn_types = {
+            "Scikit-learn MLP models": 1,
+            "Import own": 2
+        }
+        self.show_task_selection_dialog("Вибір типу нейромережі", nn_types)
+
+    def show_task_selection_dialog(self, title, tasks):
+        dialog = QDialog(self.sender)
+        dialog.setWindowTitle(title)
+        dialog.setGeometry(200, 200, 400, 500)
+
+        layout = QVBoxLayout(dialog)
+
+        # Button Group for Tasks
+        task_group = QButtonGroup(dialog)
+
+        for task_text, task_value in tasks.items():
+            radio_btn = QRadioButton(task_text)
+            radio_btn.setMinimumHeight(100)
+            radio_btn.setFont(QFont('Arial', 12))
+            task_group.addButton(radio_btn, task_value)
+            layout.addWidget(radio_btn)
+
+        # Confirm Button
+        confirm_btn = QPushButton("Підтвердити")
+        confirm_btn.clicked.connect(lambda: self.handle_task_selection(task_group, dialog))
+        layout.addWidget(confirm_btn)
+
+        dialog.exec_()
+
+    def handle_task_selection(self, group, dialog):
+        selected_button = group.checkedButton()
+        selected_task = group.checkedButton().text()
+        self.selected_task = selected_task
+
+        if selected_task == "Import own":
+            dialog.accept()
+            self.show_nn_loader_dialog()
+            return
+
+        if selected_button:
+            placeholder_dialog = QDialog(self.sender)
+            placeholder_dialog.setWindowTitle("Підтвердження")
+            placeholder_dialog.setGeometry(200, 200, 400, 300)
+
+            layout = QVBoxLayout(placeholder_dialog)
+
+            # Title with selected option
+            title_label = QLabel(f"Обрано: {selected_task}")
+            title_label.setAlignment(Qt.AlignCenter)
+            title_label.setFont(QFont('Arial', 14))
+            layout.addWidget(title_label)
+            dialog.accept()
+
+            self.request_models_dict.emit(selected_task)
+
+    def show_nn_loader_dialog(self):
+        """Show dialog for loading neural network model"""
+        loader_dialog = QDialog(self.sender)
+        loader_dialog.setWindowTitle("Завантаження нейромережі")
+        loader_dialog.setGeometry(200, 200, 1000, 800)
+
+        layout = QVBoxLayout(loader_dialog)
+
+        # Create the loader widget and controller
+        nn_loader_widget = NeuralNetworkLoaderTabWidget()
+
+        # Create a dummy experiment object
+        class DummyExperiment:
+            def __init__(self):
+                self.task = None
+                self.load_type = None
+                self.model_file_path = None
+                self.weights_file_path = None
+
+        dummy_experiment = DummyExperiment()
+
+        # Create the controller
+        self.nn_loader_controller = NeuralNetworkLoaderTabController(dummy_experiment, nn_loader_widget)
+
+        # Connect the model loaded signal
+        # Add close button
+        buttons_layout = QVBoxLayout()
+        save_btn = QPushButton("Перейти до Налаштування")
+        save_btn.clicked.connect(self.on_nn_model_loaded)
+        buttons_layout.addWidget(save_btn)
+
+        # Add widget to layout
+        layout.addWidget(nn_loader_widget)
+        layout.addLayout(buttons_layout)
+
+        self.nn_loader_dialog = loader_dialog
+        loader_dialog.exec_()
+
+    def on_nn_model_loaded(self, model):
+        """Handle when a neural network model is loaded"""
+        if self.nn_loader_controller and self.nn_loader_dialog:
+            # Get information from the controller
+            task = self.nn_loader_controller.experiment.task
+            model_file_path = self.nn_loader_controller.experiment.model_file_path
+            weights_file_path = self.nn_loader_controller.experiment.weights_file_path
+            load_type = self.nn_loader_controller.experiment.load_type
+            # Send data to experiment manager
+            #task_name = task.value if isinstance(task, TaskType) else str(task)
+            self.send_nn_model.emit(task, model_file_path, weights_file_path, load_type)
+
+            # Close the dialog
+            self.nn_loader_dialog.accept()
+
+    def show_model_selection_dialog(self, models_dict: Dict):
+        """
+            Show a dialog with all models from the dictionary and return the selected model
+
+            Args:
+                models_dict: Dictionary with model names as keys and model classes as values
+
+            Returns:
+                Instance of the selected model or None if canceled
+            """
+
+        dialog = QDialog(self.sender)
+        dialog.setWindowTitle("Select Model")
+        dialog.setGeometry(200, 200, 500, 600)
+
+        # Create layout
+        layout = QVBoxLayout(dialog)
+
+        # Add title
+        title = QLabel("Виберіть модель")
+        title.setAlignment(Qt.AlignCenter)
+        title.setFont(QFont('Arial', 14, QFont.Bold))
+        layout.addWidget(title)
+
+        # Create list widget for models
+        models_list = QListWidget()
+        models_list.setFont(QFont('Arial', 12))
+
+        # Sort model names for better usability
+        model_names = sorted(models_dict.keys())
+
+        # Add models to list
+        for model_name in model_names:
+            models_list.addItem(model_name)
+
+        # Set minimum height for better visibility
+        models_list.setMinimumHeight(400)
+        layout.addWidget(models_list)
+
+        # Add buttons
+        buttons_layout = QVBoxLayout()
+
+        select_btn = QPushButton("Обрати")
+        select_btn.setFont(QFont('Arial', 12))
+        select_btn.setMinimumHeight(40)
+
+        buttons_layout.addWidget(select_btn)
+        layout.addLayout(buttons_layout)
+
+        # Initialize result
+        selected_model = None
+
+        def on_select():
+            nonlocal selected_model
+            current_item = models_list.currentItem()
+            if current_item:
+                model_name = current_item.text()
+                model_class = models_dict[model_name]
+                selected_model = model_class()
+                dialog.accept()
+
+        select_btn.clicked.connect(on_select)
+
+        # Double click to select
+        models_list.itemDoubleClicked.connect(lambda item: on_select())
+
+        # Show dialog
+        result = dialog.exec_()
+
+        # Return selected model or None if canceled
+        return selected_model if result == QDialog.Accepted else None
+
+    def handle_models_dict_response(self, models_dict):
+        choosen_model = (self.show_model_selection_dialog(models_dict))
+        self.send_data_to_experiment_manager(choosen_model, choosen_model.get_params())
+
+    def send_data_to_experiment_manager(self, model, params):
+        print(model, params)
+        self.send_ml_model.emit(self.selected_task, model, params)
+
+файл workspace_manager.py
+from typing import Dict, List, Tuple, Any, Optional
+from PyQt5.QtCore import QObject, pyqtSlot, Qt
+from PyQt5.QtWidgets import QGraphicsView, QWidget, QMessageBox, QFileDialog
+from project.controllers.node_controller import NodeController
+from project.controllers.serializer import WorkspaceSerializer
+from project.logic.experiment_manager import ExperimentManager
+
+class WorkspaceManager(QObject):
+    """
+    Workspace manager responsible for saving/loading program state
+    and managing project files.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        # Path to current project file
+        self.current_project_path: Optional[str] = None
+
+        # Project modification status (unsaved changes)
+        self.has_unsaved_changes: bool = False
+
+        # Serializer for save/load operations
+        self.serializer = WorkspaceSerializer()
+
+        # References to other system components
+        self.experiment_manager: Optional[ExperimentManager] = None
+        self.node_controller: Optional[NodeController] = None
+        self.work_area: Optional[QGraphicsView] = None  # Reference to work area
+
+        # Connect serializer signals
+        self._connect_serializer_signals()
+
+    def set_experiment_manager(self, manager: ExperimentManager):
+        """Sets experiment manager for WorkspaceManager."""
+        self.experiment_manager = manager
+        self.serializer.set_experiment_manager(manager)
+
+    def set_node_controller(self, controller: NodeController):
+        """Sets node controller for WorkspaceManager."""
+        self.node_controller = controller
+        self.serializer.set_node_controller(controller)
+
+        # Connect controller signals to track changes
+        self._connect_node_controller_signals()
+
+    def set_work_area(self, work_area: QGraphicsView):
+        """Sets work area for WorkspaceManager."""
+        self.work_area = work_area
+
+    def _connect_serializer_signals(self):
+        """Connects serializer signals to corresponding slots."""
+        self.serializer.workspace_saved.connect(self._on_workspace_saved)
+        self.serializer.workspace_loaded.connect(self._on_workspace_loaded)
+        self.serializer.save_error.connect(self._on_save_error)
+        self.serializer.load_error.connect(self._on_load_error)
+
+    def _connect_node_controller_signals(self):
+        """Connects node controller signals to track changes."""
+        if self.node_controller:
+            # Track graph changes
+            self.node_controller.node_created.connect(self._on_workspace_modified)
+            self.node_controller.node_deleted.connect(self._on_workspace_modified)
+            self.node_controller.node_renamed.connect(self._on_workspace_modified)
+            self.node_controller.experiment_inherited.connect(self._on_workspace_modified)
+
+    @pyqtSlot()
+    def _on_workspace_modified(self):
+        """Handler for workspace modification events."""
+        self.has_unsaved_changes = True
+
+    @pyqtSlot(str)
+    def _on_workspace_saved(self, path: str):
+        """Handler for successful workspace save."""
+        self.current_project_path = path
+        self.has_unsaved_changes = False
+        print(f"Workspace successfully saved: {path}")
+
+    @pyqtSlot(str)
+    def _on_workspace_loaded(self, path: str):
+        """Handler for successful workspace load."""
+        self.current_project_path = path
+        self.has_unsaved_changes = False
+        print(f"Workspace successfully loaded: {path}")
+
+        # Fit view to content after loading
+        self.fit_view_to_content()
+
+    @pyqtSlot(str)
+    def _on_save_error(self, error_msg: str):
+        """Handler for save errors."""
+        print(f"Save error: {error_msg}")
+        QMessageBox.critical(None, "Помилка збереження", error_msg)
+
+    @pyqtSlot(str)
+    def _on_load_error(self, error_msg: str):
+        """Handler for load errors."""
+        print(f"Load error: {error_msg}")
+        QMessageBox.critical(None, "Помилка завантаження", error_msg)
+
+    def new_project(self):
+        """Creates new project."""
+        # Check for unsaved changes
+        if self.has_unsaved_changes and not self._confirm_discard_changes():
+            return False
+
+        # Clear current data
+        self._clear_workspace()
+
+        # Reset project path
+        self.current_project_path = None
+        self.has_unsaved_changes = False
+
+        return True
+
+    def save_project(self, parent_widget: Optional[QWidget] = None) -> bool:
+        """
+        Saves current project.
+
+        Args:
+            parent_widget: Parent widget for dialogs
+
+        Returns:
+            bool: True on success, False on error
+        """
+        # Check if project path exists
+        if not self.current_project_path:
+            return self.save_project_as(parent_widget)
+
+        # Save project to current path
+        success = self.serializer.save_workspace(self.current_project_path)
+        return success
+
+    def save_project_as(self, parent_widget: Optional[QWidget] = None) -> bool:
+        """
+        Saves project to new file.
+
+        Args:
+            parent_widget: Parent widget for dialogs
+
+        Returns:
+            bool: True on success, False on error
+        """
+        # Open file save dialog
+        options = QFileDialog.Options()
+        filepath, _ = QFileDialog.getSaveFileName(
+            parent_widget,
+            "Зберегти проект",
+            "",
+            "ML Project Files (*.mlproj);;All Files (*)",
+            options=options
+        )
+
+        if filepath:
+            # Add extension if not specified
+            if not filepath.endswith('.mlproj'):
+                filepath += '.mlproj'
+
+            # Save project to selected file
+            return self.serializer.save_workspace(filepath)
+
+        return False
+
+    def open_project(self, parent_widget: Optional[QWidget] = None) -> bool:
+        """
+        Opens existing project.
+
+        Args:
+            parent_widget: Parent widget for dialogs
+
+        Returns:
+            bool: True on success, False on error
+        """
+        # Check for unsaved changes
+        if self.has_unsaved_changes and not self._confirm_discard_changes():
+            return False
+
+        # Open file load dialog
+        options = QFileDialog.Options()
+        filepath, _ = QFileDialog.getOpenFileName(
+            parent_widget,
+            "Відкрити проект",
+            "",
+            "ML Project Files (*.mlproj);;All Files (*)",
+            options=options
+        )
+
+        if filepath:
+            # Load project from selected file
+            return self.serializer.load_workspace(filepath)
+
+        return False
+
+    def fit_view_to_content(self):
+        """Fits view to all scene items."""
+        if self.work_area and self.node_controller and self.node_controller.scene:
+            # Do nothing if no items exist
+            if not self.node_controller.nodes:
+                return
+
+            # Calculate bounding rectangle for all nodes
+            rect = None
+            for node in self.node_controller.nodes:
+                node_rect = node.sceneBoundingRect()
+                if rect is None:
+                    rect = node_rect
+                else:
+                    rect = rect.united(node_rect)
+
+            # Add margin around items
+            if rect:
+                margin = 50  # Pixel margin
+                rect = rect.adjusted(-margin, -margin, margin, margin)
+
+                # Fit view to this rectangle
+                self.work_area.fitInView(rect, Qt.KeepAspectRatio)
+
+    def _confirm_discard_changes(self) -> bool:
+        """
+        Confirms discarding unsaved changes with user.
+
+        Returns:
+            bool: True if user confirmed discard, False otherwise
+        """
+        reply = QMessageBox.question(
+            None,
+            "Незбережені зміни",
+            "Є незбережені зміни. Бажаєте зберегти їх перед продовженням?",
+            QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
+            QMessageBox.Save
+        )
+
+        if reply == QMessageBox.Save:
+            # Save changes
+            return self.save_project()
+        elif reply == QMessageBox.Discard:
+            # Discard changes
+            return True
+        else:  # QMessageBox.Cancel
+            # Cancel action
+            return False
+
+    def _clear_workspace(self):
+        """Clears workspace."""
+        # Clear experiments in manager
+        if self.experiment_manager:
+            self.experiment_manager.experiments = {}
+
+        # Clear nodes on scene
+        if self.node_controller:
+            for node in list(self.node_controller.nodes):
+                self.node_controller.delete_node(node)
+
+файл __init__.py
+
+

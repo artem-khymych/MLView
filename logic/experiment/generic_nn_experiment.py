@@ -127,7 +127,7 @@ class GenericNeuralNetworkExperiment(NeuralNetworkExperiment):
             x_train = self._convert_to_tensorflow_compatible(self.X_train)
             x_test = self._convert_to_tensorflow_compatible(self.X_test)
 
-            if isinstance(x_train, (np.ndarray, tf.Tensor)) and len(x_train.shape) == 3:
+            if isinstance(x_train, (np.ndarray, tf.Tensor)):
                 self.train_predictions = model.predict(x_train)
                 self.test_predictions = model.predict(x_test)
                 self.train_actual = self.y_train
@@ -250,20 +250,23 @@ class GenericNeuralNetworkExperiment(NeuralNetworkExperiment):
         """
         Validate data for time series forecasting task.
         """
+        self.X_train = self._convert_to_tensorflow_compatible(self.X_train)
+        self.X_test = self._convert_to_tensorflow_compatible(self.X_test)
+        if self.y_train is not None:
+            self.y_train = self._convert_to_tensorflow_compatible(self.y_train)
+        if self.y_test is not None:
+            self.y_test = self._convert_to_tensorflow_compatible(self.y_test)
+
         # Basic validation
         if self.X_train is None or self.X_test is None:
             raise ValueError("Time series data is missing")
 
         # Check data shape
         if isinstance(self.X_train, np.ndarray):
-            if len(self.X_train.shape) != 3:
-                raise ValueError(
-                    f"Incorrect input data shape for time series. Expected 3D array, got: {self.X_train.shape}")
+            pass
         elif isinstance(self.X_train, tf.keras.utils.Sequence):
             # For sequence generators, validation is performed during loading
             pass
-        else:
-            raise ValueError(f"Unsupported data type for time series: {type(self.X_train)}")
 
     def _store_data_info(self):
         """

@@ -53,3 +53,5 @@ class ExperimentSettingsWindow(QMainWindow):
         self.window_accepted.emit()
         self.close()
 
+
+
